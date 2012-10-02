@@ -1,20 +1,198 @@
 # -*- coding: utf-8 -*-
-
-from zope.interface import implements
+from zope import schema
+from zope.formlib import form
+from zope.interface import implements, Interface
 
 from plone.portlets.interfaces import IPortletDataProvider
 from plone.app.portlets.portlets import base
 
-# TODO: If you define any fields for the portlet configuration schema below
-# do not forget to uncomment the following import
-from zope import schema
-from zope.formlib import form
-
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+
+from DateTime import DateTime
+import parser
+import tool
+import time
+
 
 # TODO: If you require i18n translation for any of your schema fields below,
 # uncomment the following to import your package MessageFactory
 from example.portlet.foo import FooPortletMessageFactory as _
+
+# store the feeds here (which means in RAM)
+FEED_DATA = {}  # url: is the key
+
+class IFeed(Interface):
+
+    def __init__(url, timeout):
+        """initialize the feed with the given url. will not automatically load it
+           timeout defines the time between updates in minutes
+        """
+
+    def loaded():
+        """return if this feed is in a loaded state"""
+
+    def title():
+        """return the title of the feed"""
+
+    def items():
+        """return the items of the feed"""
+
+    def feed_link():
+        """return the url of this feed in feed:// format"""
+
+    def site_url():
+        """return the URL of the site"""
+
+    def last_update_time_in_minutes():
+        """return the time this feed was last updated in minutes since epoch"""
+
+    def last_update_time():
+        """return the time the feed was last updated as DateTime object"""
+
+    def needs_update():
+        """return if this feed needs to be updated"""
+
+    def update():
+        """update this feed. will automatically check failure state etc.
+           returns True or False whether it succeeded or not
+        """
+
+    def update_failed():
+        """return if the last update failed or not"""
+
+    def ok():
+        """is this feed ok to display?"""
+
+
+class ItsatripFeed(object):
+    """an feed reader for http://www.itsatrip.org/api/xmlfeed.ashx structure"""
+    implements(IFeed)
+
+    # TODO: discuss whether we want an increasing update time here, probably not though
+    FAILURE_DELAY = 10  # time in minutes after which we retry to load it after a failure
+
+    def __init__(self, url, timeout):
+        self.url = url
+        self.timeout = timeout
+
+        self._items = []
+        self._title = ""
+        self._siteurl = ""
+        self._loaded = False    # is the feed loaded
+        self._failed = False    # does it fail at the last update?
+        self._last_update_time_in_minutes = 0 # when was the feed last updated?
+        self._last_update_time = None            # time as DateTime or Nonw
+
+    @property
+    def last_update_time_in_minutes(self):
+        """return the time the last update was done in minutes"""
+        return self._last_update_time_in_minutes
+
+    @property
+    def last_update_time(self):
+        """return the time the last update was done in minutes"""
+        return self._last_update_time
+
+    @property
+    def update_failed(self):
+        return self._failed
+
+    @property
+    def ok(self):
+        return (not self._failed and self._loaded)
+
+    @property
+    def loaded(self):
+        """return whether this feed is loaded or not"""
+        return self._loaded
+
+    @property
+    def needs_update(self):
+        """check if this feed needs updating"""
+        now = time.time()/60
+        return (self.last_update_time_in_minutes+self.timeout) < now
+
+    def update(self):
+        """update this feed"""
+        now = time.time()/60    # time in minutes
+
+        # check for failure and retry
+        if self.update_failed:
+            if (self.last_update_time_in_minutes+self.FAILURE_DELAY) < now:
+                return self._retrieveFeed()
+            else:
+                return False
+
+        # check for regular update
+        if self.needs_update:
+            return self._retrieveFeed()
+
+        return self.ok
+
+    def _retrieveFeed(self):
+        """do the actual work and try to retrieve the feed"""
+        url = self.url
+        if url!='':
+            self._last_update_time_in_minutes = time.time()/60
+            self._last_update_time = DateTime()
+            try:
+                data = tool.read_data(url)
+            except:
+                self._loaded = True # we tried at least but have a failed load
+                self._failed = True
+                return False
+            
+            p = parser.Parser()
+            p.parse(data)
+            ##TODO: Title?
+            self._title = u''
+            ##d.feed.link
+            self._siteurl = u''
+            self._items = []
+            for item in p.items:
+                print item.name
+                try:
+                    link = "TODO:link?"
+                    itemdict = {
+                        'title' : item.name,
+                        'url' : link,
+                        'summary' : item.description,
+                    }
+                    if hasattr(item, "updated"):
+                        itemdict['updated']=DateTime(item.updated)
+                except AttributeError:
+                    continue
+                self._items.append(itemdict)
+            self._loaded = True
+            self._failed = False
+            return True
+        self._loaded = True
+        self._failed = True # no url set means failed
+        return False # no url set, although that actually should not really happen
+
+
+    @property
+    def items(self):
+        return self._items
+
+    # convenience methods for displaying
+    #
+
+    @property
+    def feed_link(self):
+        """return rss url of feed for portlet"""
+        return self.url.replace("http://","feed://")
+
+    @property
+    def title(self):
+        """return title of feed for portlet"""
+        return self._title
+
+    @property
+    def siteurl(self):
+        """return the link to the site the RSS feed points to"""
+        return self._siteurl
+
 
 
 class IFooPortlet(IPortletDataProvider):
@@ -115,7 +293,7 @@ class Renderer(base.DeferredRenderer):
         feed = FEED_DATA.get(self.data.url,None)
         if feed is None:
             # create it
-            feed = FEED_DATA[self.data.url] = RSSFeed(self.data.url,self.data.timeout)
+            feed = FEED_DATA[self.data.url] = ItsatripFeed(self.data.url,self.data.timeout)
         return feed
 
     @property
