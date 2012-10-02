@@ -74,7 +74,9 @@ class ItsatripFeed(object):
     def __init__(self, url, timeout):
         self.url = url
         self.timeout = timeout
-
+        
+        self._parser = None
+        self._items_by_type = {}
         self._items = []
         self._title = ""
         self._siteurl = ""
@@ -142,21 +144,27 @@ class ItsatripFeed(object):
                 self._failed = True
                 return False
             
-            p = parser.Parser()
-            p.parse(data)
+            self._parser = parser.Parser()
+            self._parser.parse(data)
             ##TODO: Title?
             self._title = u''
-            ##d.feed.link
-            self._siteurl = u''
+            self._siteurl = u'http://www.itsatrip.org/events/default.aspx'
             self._items = []
-            for item in p.items:
-                print item.name
+            lformat = self._siteurl + u'?eventid=%s'
+            for item in self._parser.items:
                 try:
-                    link = "TODO:link?"
+                    link = lformat % item.id
                     itemdict = {
                         'title' : item.name,
                         'url' : link,
-                        'summary' : item.description,
+                        'summary' : item.summary,
+                        'venueName':item.venueName,
+                        'address' : item.address,
+                        'city' : item.city,
+                        'time' : item.time,
+                        'phone' : item.phone,
+                        'addlPhones' : item.addlPhones,
+                        'website' : item.website
                     }
                     if hasattr(item, "updated"):
                         itemdict['updated']=DateTime(item.updated)
@@ -170,7 +178,40 @@ class ItsatripFeed(object):
         self._failed = True # no url set means failed
         return False # no url set, although that actually should not really happen
 
-
+    def items_by_type(self, event_types):
+        if not self._parser or not event_types or len(event_types) <= 0:
+            return []
+        result = self._items_by_type.get(event_types, None)        
+        if not result:
+            result = []
+            tags = event_types.split(';')
+            tags = [t.strip() for t in tags if len(t.strip())>0]
+            items = tool.search(self._parser, tags)
+            lformat = self._siteurl + u'?eventid=%s'
+            print 'items_by_type %s len:%s' % (event_types, len(items))
+            for item in items:
+                try:
+                    link = lformat % item.id
+                    itemdict = {
+                        'title' : item.name,
+                        'url' : link,
+                        'summary' : item.summary,
+                        'venueName':item.venueName,
+                        'address' : item.address,
+                        'city' : item.city,
+                        'time' : item.time,
+                        'phone' : item.phone,
+                        'addlPhones' : item.addlPhones,
+                        'website' : item.website
+                    }
+                    if hasattr(item, "updated"):
+                        itemdict['updated']=DateTime(item.updated)
+                except AttributeError:
+                    continue
+                result.append(itemdict)
+            self._items_by_type[event_types] = result
+        return result
+    
     @property
     def items(self):
         return self._items
@@ -219,15 +260,18 @@ class IFooPortlet(IPortletDataProvider):
                        description=_(u'How many items to list.'),
                        required=True,
                        default=5)
-    url = schema.TextLine(title=_(u'URL of feed'),
-                        description=_(u'Link of the feed to display.'),
+    url = schema.TextLine(title=_(u'Dataset url'),
+                        description=_(u'Link of the Dataset to display.'),
                         required=True,
                         default=u'http://www.itsatrip.org/api/xmlfeed.ashx')
-
     timeout = schema.Int(title=_(u'Feed reload timeout'),
                         description=_(u'Time in minutes after which the feed should be reloaded.'),
                         required=True,
                         default=100)
+    event_types = schema.TextLine(title=_(u'Event Types'),
+                        description=_(u'Event types to display.'),
+                        required=False,
+                        default=u'')
 
 class Assignment(base.Assignment):
     """Portlet assignment.
@@ -239,7 +283,8 @@ class Assignment(base.Assignment):
     implements(IFooPortlet)
 
     portlet_title = u''
-    url=u"http://www.itsatrip.org/api/xmlfeed.ashx"
+    url = u"http://www.itsatrip.org/api/xmlfeed.ashx"
+    event_types = u''
 
     def __init__(self, portlet_title=u'', count=5,
             url=u'http://www.itsatrip.org/api/xmlfeed.ashx',
@@ -293,7 +338,8 @@ class Renderer(base.DeferredRenderer):
         feed = FEED_DATA.get(self.data.url,None)
         if feed is None:
             # create it
-            feed = FEED_DATA[self.data.url] = ItsatripFeed(self.data.url,self.data.timeout)
+            feed = FEED_DATA[self.data.url] = ItsatripFeed(self.data.url,
+                    self.data.timeout)
         return feed
 
     @property
@@ -324,6 +370,9 @@ class Renderer(base.DeferredRenderer):
 
     @property
     def items(self):
+        if self.data.event_types and len(self.data.event_types) > 0:
+            items = self._getFeed().items_by_type(self.data.event_types)
+            return items[:self.data.count]
         return self._getFeed().items[:self.data.count]
 
     @property

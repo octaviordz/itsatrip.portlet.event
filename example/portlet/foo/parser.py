@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import time
 import urllib2
@@ -21,7 +22,15 @@ class Event(object):
         self.address = u''
         self.addlPhones = u''
         self.venueName = u''
-		
+        self.admission = u''        
+    
+    @property
+    def summary(self):
+        #TODO:cut to 240 chars
+        desc = self.description
+        return desc
+
+        
 ##http://effbot.org/librarybook/xml-parsers-expat.htm
 ##<name>Concert Screening: Queen-Hungarian Rhapsody</name>
 ##<eventTime>8pm</eventTime><admission>$13</admission>
@@ -41,6 +50,7 @@ class Parser:
         self.tags = {}
         self.current = None
         self.cnode = None
+        self.isEventSection = False
         self.isTagSection = False
         self.buffer = u''
         self.p = expat.ParserCreate()
@@ -53,6 +63,7 @@ class Parser:
     def start_element(self, name, attr):
         self.cnode = name
         if name == u'Event':
+            self.isEventSection = True
             self.current = Event()
         if name == u'EventInterestArea':
             self.isTagSection = True
@@ -60,31 +71,36 @@ class Parser:
     def end_element(self, name):
         self.cnode = None
         if name == u'Event':
+            self.isEventSection = False
             self.current = None
         elif name == u'EventInterestArea':
             self.isTagSection = False
         elif name == u'interestName':
-            ##TODO:are coma separated?
-            ##str.split(data)
-            ##Theater, Dance, Film & Performing Arts
             tag = self.buffer.strip()            
             if not self.tags.has_key(tag):
                 self.tags[tag] = [self.current]
             else:
                 l = self.tags[tag]
                 l.append(self.current)
-        self.buffer = ''
+        self._end_element_event(name)
+        self.buffer = u''
+    
+    def _end_element_event(self, name):
+        if self.isEventSection and self.current != None:
+            #print 'elmnt name:%s buffer:%s id:%s'%(name, self.buffer.strip(),
+            #        self.current.id)
+            if name == u'shortDesc':
+                self.current.description = self.buffer.strip()
+            elif hasattr(self.current, name):
+                setattr(self.current, name, self.buffer.strip())
 
     def char_data(self, data):
         if self.cnode == None:
             return
+        self.buffer = u''.join((self.buffer, data))
         if self.isTagSection:
-            self.buffer = u''.join((self.buffer, data))
             self._char_data_tag(data)
-            return
-        ## if is not a interest area check if there is a current event
-        ## if there is one we are still reading the events
-        if self.current != None:            
+        elif self.isEventSection and self.current != None:            
             self._char_data_event(data)
             
     def _char_data_event(self, data):
@@ -92,18 +108,14 @@ class Parser:
             self.current.id = data
             self.events[self.current.id] = self.current
             self.items.append(self.current)
-        elif self.cnode == u'eventTime':
-            ce = self.events[self.current.id]
-            ce.time = data
-        elif hasattr(self.current, self.cnode):
-            setattr(self.current, self.cnode, data)
+        elif self.cnode == u'eventTime':            
+            self.current.time = data
                 
     def _char_data_tag(self, data):
         if self.cnode == u'eventID':
             self.current = self.events[data]
-        if self.cnode == u'interestName':
-            pass
-            
+
+
     def parse(self, data):
         st = time.time()
         self.p.Parse(data)
@@ -116,6 +128,14 @@ if __name__ == '__main__':
     data = tool.read_data()
     p = Parser()
     p.parse(data)
-    print 'Events cout: %s' % len(p.events)
-    ##e = p.events[u'9665']
-    ##print u'Event %s %s' % (e.time, '.')
+    print u'Events cout: %s' % len(p.events)
+    result = tool.search(p, u'Art, History & Museums')
+    for i in result:
+        id, name = i.id, i.name.encode('ascii', 'replace')
+        print 'id:%s name:%s' % (id, name)
+        break
+    for i in p.items:
+        name, description = (i.name.encode('ascii', 'replace'),
+            i.description.encode('ascii', 'replace'))
+        print 'id:%s n:%s d:%s t:%s' % (i.id, name, description, i.time)
+        break

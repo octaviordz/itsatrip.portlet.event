@@ -25,20 +25,47 @@
                     Title
                 </span>
                 <span class="portletItemDetails"
-                      tal:condition="exists:item/updated">
-                      <span tal:omit-tag="" tal:content="python:toLocalizedTime(item['updated'])">19.02.2007</span>
+                    tal:condition="exists:item/updated">
+                    <span tal:omit-tag="" tal:content="python:toLocalizedTime(item['updated'])">19.02.2007</span>
+                </span>
+            </a>
+            <div tal:content="structure item/summary"
+                class="summary">
+                Summary
+            </div>
+            <div tal:content="structure item/time"
+                class="time">
+                Time
+            </div>
+            <div tal:content="item/venueName"
+                class="venueName">
+                VenueName
+            </div>
+            <div class="address">
+                <span tal:replace="item/address"
+                    tal:condition="exists:item/address">
+                    Address
+                </span>
+                <span class="city"
+                    tal:condition="exists:item/city">
+                    City
+                </span>
+            </div>
+            <a href="#"
+                tal:attributes="href string:${item/website}"
+                class="website">
+                <span tal:replace="python: path('item/website').replace('http://', '').replace('https://', '')">
+                    website
                 </span>
             </a>
         </dd>
     </tal:rss>
     <dd class="portletFooter" tal:condition="view/feedAvailable">
-        <!--
         <a href=""
            tal:attributes="href view/siteurl"
            i18n:translate="box_morelink">
                 More&hellip;
         </a>
-        -->
         <span class="portletBottomLeft"></span>
         <span class="portletBottomRight"></span>
     </dd>

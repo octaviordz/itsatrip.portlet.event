@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import time
 import urllib2
@@ -16,6 +17,7 @@ def read_data(url=None, force=False):
         os.makedirs(tmpf)
     tmpf = os.path.join(tmpf, hash.hexdigest())
     if not force and os.path.exists(tmpf):
+        print 'using %s' % tmpf
         file = open(tmpf, 'rt')
         data = file.read()
         file.close()
@@ -29,9 +31,11 @@ def read_data(url=None, force=False):
     return data
 
 
-def search(parser, tag):
-    tags = parser.tags
-    result = None
-    if tags.has_key(tag):
-        result = tags[tag]
+def search(parser, tags):
+    existtag = parser.tags
+    items = parser.items
+    result = []
+    for tag in tags:
+        if existtag.has_key(tag):
+            result += ([i for i in items if i in existtag[tag]])
     return result
