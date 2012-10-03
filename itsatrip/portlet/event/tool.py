@@ -17,7 +17,6 @@ def read_data(url=None, force=False):
         os.makedirs(tmpf)
     tmpf = os.path.join(tmpf, hash.hexdigest())
     if not force and os.path.exists(tmpf):
-        print 'using %s' % tmpf
         file = open(tmpf, 'rt')
         data = file.read()
         file.close()

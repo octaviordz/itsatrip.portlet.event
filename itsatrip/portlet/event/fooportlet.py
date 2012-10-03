@@ -12,11 +12,12 @@ from DateTime import DateTime
 import parser
 import tool
 import time
+import urllib2
 
 
 # TODO: If you require i18n translation for any of your schema fields below,
 # uncomment the following to import your package MessageFactory
-from example.portlet.foo import FooPortletMessageFactory as _
+from itsatrip.portlet.event import FooPortletMessageFactory as _
 
 # store the feeds here (which means in RAM)
 FEED_DATA = {}  # url: is the key
@@ -138,12 +139,15 @@ class ItsatripFeed(object):
             self._last_update_time_in_minutes = time.time()/60
             self._last_update_time = DateTime()
             try:
-                data = tool.read_data(url)
-            except:
-                self._loaded = True # we tried at least but have a failed load
-                self._failed = True
-                return False
-            
+                data = tool.read_data(url, force=True)
+            except urllib2.URLError, e:
+                try:
+                    data = tool.read_data(url)
+                except:
+                    # we tried at least but have a failed load
+                    self._loaded = True 
+                    self._failed = True
+                    return False
             self._parser = parser.Parser()
             self._parser.parse(data)
             ##TODO: Title?
@@ -288,11 +292,12 @@ class Assignment(base.Assignment):
 
     def __init__(self, portlet_title=u'', count=5,
             url=u'http://www.itsatrip.org/api/xmlfeed.ashx',
-            timeout=100):
+            timeout=100, event_types=u''):
         self.portlet_title = portlet_title
         self.count = count
         self.url = url
         self.timeout = timeout
+        self.event_types = event_types
         
         
     @property

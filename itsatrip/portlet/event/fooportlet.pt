@@ -1,5 +1,5 @@
 <dl class="portlet portletFooPortlet"
-    i18n:domain="example.portlet.foo">
+    i18n:domain="itsatrip.portlet.event">
 
     <dt class="portletHeader">
         <span class="portletTopLeft"></span>
