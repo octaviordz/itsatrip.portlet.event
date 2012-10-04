@@ -9,26 +9,26 @@
        name="default"
        title="itsatrip event"
        directory="profiles/default"
-       description="Display itsatrip.com events"
+       description="Display itsatrip.org events"
        provides="Products.GenericSetup.interfaces.EXTENSION"
        />
 
      <!-- Register the portlet -->
 
      <!-- If the portlet has no configurable parameters, you can remove
-          the EditForm declaration in fooportlet.py and delete
+          the EditForm declaration in eventportlet.py and delete
           the 'editview' attribute from this statement.
        -->
 
      <plone:portlet
          name="itsatrip.portlet.event.EventPortlet"
-         interface=".fooportlet.IEventPortlet"
-         assignment=".fooportlet.Assignment"
+         interface=".eventportlet.IEventPortlet"
+         assignment=".eventportlet.Assignment"
          view_permission="zope2.View"
          edit_permission="cmf.ManagePortal"
-         renderer=".fooportlet.Renderer"
-         addview=".fooportlet.AddForm"
-         editview=".fooportlet.EditForm"
+         renderer=".eventportlet.Renderer"
+         addview=".eventportlet.AddForm"
+         editview=".eventportlet.EditForm"
          />
 
 </configure>

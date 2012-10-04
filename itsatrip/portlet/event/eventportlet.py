@@ -310,7 +310,7 @@ class Renderer(base.DeferredRenderer):
     of this class. Other methods can be added and referenced in the template.
     """
     
-    render_full = ViewPageTemplateFile('fooportlet.pt')
+    render_full = ViewPageTemplateFile('eventportlet.pt')
     
     @property
     def initializing(self):

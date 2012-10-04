@@ -1,11 +1,11 @@
 from setuptools import setup, find_packages
 import os
 
-version = '0.1.0'
+version = '0.1.1'
 
 setup(name='itsatrip.portlet.event',
       version=version,
-      description="Display itsatrip.com events",
+      description="Display itsatrip.org events",
       long_description=open("README.txt").read() + "\n" +
                        open(os.path.join("docs", "HISTORY.txt")).read(),
       # Get more strings from
