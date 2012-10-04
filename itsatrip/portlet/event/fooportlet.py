@@ -75,12 +75,11 @@ class ItsatripFeed(object):
     def __init__(self, url, timeout):
         self.url = url
         self.timeout = timeout
-        
         self._parser = None
-        self._items_by_type = {}
+        self._items_view = {}
         self._items = []
-        self._title = ""
-        self._siteurl = ""
+        self._title = ""        
+        self._siteurl = u'http://www.itsatrip.org/events/default.aspx'
         self._loaded = False    # is the feed loaded
         self._failed = False    # does it fail at the last update?
         self._last_update_time_in_minutes = 0 # when was the feed last updated?
@@ -150,31 +149,8 @@ class ItsatripFeed(object):
                     return False
             self._parser = parser.Parser()
             self._parser.parse(data)
-            ##TODO: Title?
-            self._title = u''
-            self._siteurl = u'http://www.itsatrip.org/events/default.aspx'
-            self._items = []
-            lformat = self._siteurl + u'?eventid=%s'
-            for item in self._parser.items:
-                try:
-                    link = lformat % item.id
-                    itemdict = {
-                        'title' : item.name,
-                        'url' : link,
-                        'summary' : item.summary,
-                        'venueName':item.venueName,
-                        'address' : item.address,
-                        'city' : item.city,
-                        'time' : item.time,
-                        'phone' : item.phone,
-                        'addlPhones' : item.addlPhones,
-                        'website' : item.website
-                    }
-                    if hasattr(item, "updated"):
-                        itemdict['updated']=DateTime(item.updated)
-                except AttributeError:
-                    continue
-                self._items.append(itemdict)
+            self._title = u'Events'
+            self._items = self._model2view(self._parser.items)
             self._loaded = True
             self._failed = False
             return True
@@ -182,40 +158,53 @@ class ItsatripFeed(object):
         self._failed = True # no url set means failed
         return False # no url set, although that actually should not really happen
 
-    def items_by_type(self, event_types):
-        if not self._parser or not event_types or len(event_types) <= 0:
-            return []
-        result = self._items_by_type.get(event_types, None)        
+    def query_items(self, event_types, free_events):
+        assert self._parser, 'Calling before parse'
+        if not event_types and not free_events:
+            return self._items
+        elif free_events and not event_types:
+            return self._model2view(tool.free_events(self._parser.items))
+        vkey = u' '.join([event_types, str(free_events)])
+        #rint 'vkey %s' % vkey.encode('ascii', 'replace')
+        result = self._items_view.get(vkey, None)
         if not result:
-            result = []
             tags = event_types.split(';')
             tags = [t.strip() for t in tags if len(t.strip())>0]
             items = tool.search(self._parser, tags)
-            lformat = self._siteurl + u'?eventid=%s'
-            print 'items_by_type %s len:%s' % (event_types, len(items))
-            for item in items:
-                try:
-                    link = lformat % item.id
-                    itemdict = {
-                        'title' : item.name,
-                        'url' : link,
-                        'summary' : item.summary,
-                        'venueName':item.venueName,
-                        'address' : item.address,
-                        'city' : item.city,
-                        'time' : item.time,
-                        'phone' : item.phone,
-                        'addlPhones' : item.addlPhones,
-                        'website' : item.website
-                    }
-                    if hasattr(item, "updated"):
-                        itemdict['updated']=DateTime(item.updated)
-                except AttributeError:
-                    continue
-                result.append(itemdict)
-            self._items_by_type[event_types] = result
+            if free_events:
+                items = tool.free_events(items)
+            result = self._model2view(items)
+            self._items_view[vkey] = result
         return result
     
+    def _fill_itemdict(self, item):
+        link = self._siteurl + u'?eventid=%s' % item.id
+        itemdict = {
+            'title' : item.name,
+            'url' : link,
+            'summary' : item.summary,
+            'venueName':item.venueName,
+            'address' : item.address,
+            'city' : item.city,
+            'time' : item.time,
+            'phone' : item.phone,
+            'addlPhones' : item.addlPhones,
+            'website' : item.website
+        }
+        if hasattr(item, "updated"):
+            itemdict['updated']=DateTime(item.updated)
+        return itemdict
+    
+    def _model2view(self, items):
+        result = []
+        for item in items:
+            try:
+                itemdict = self._fill_itemdict(item)
+            except AttributeError:
+                continue
+            result.append(itemdict)
+        return result
+
     @property
     def items(self):
         return self._items
@@ -239,8 +228,7 @@ class ItsatripFeed(object):
         return self._siteurl
 
 
-
-class IFooPortlet(IPortletDataProvider):
+class IEventPortlet(IPortletDataProvider):
     """A portlet
 
     It inherits from IPortletDataProvider because for this portlet, the
@@ -276,6 +264,10 @@ class IFooPortlet(IPortletDataProvider):
                         description=_(u'Event types to display.'),
                         required=False,
                         default=u'')
+    free_events = schema.Bool(title=_(u'Free events'),
+                        description=_(u'Display only free events.'),
+                        required=False,
+                        default=False)
 
 class Assignment(base.Assignment):
     """Portlet assignment.
@@ -284,20 +276,22 @@ class Assignment(base.Assignment):
     with columns.
     """
 
-    implements(IFooPortlet)
+    implements(IEventPortlet)
 
     portlet_title = u''
     url = u"http://www.itsatrip.org/api/xmlfeed.ashx"
     event_types = u''
+    free_events = False
 
     def __init__(self, portlet_title=u'', count=5,
             url=u'http://www.itsatrip.org/api/xmlfeed.ashx',
-            timeout=100, event_types=u''):
+            timeout=100, event_types=u'', free_events=False):
         self.portlet_title = portlet_title
         self.count = count
         self.url = url
         self.timeout = timeout
         self.event_types = event_types
+        self.free_events = free_events
         
         
     @property
@@ -373,12 +367,17 @@ class Renderer(base.DeferredRenderer):
         """checks if the feed data is available"""
         return self._getFeed().ok
 
-    @property
+    @property    
     def items(self):
-        if self.data.event_types and len(self.data.event_types) > 0:
-            items = self._getFeed().items_by_type(self.data.event_types)
-            return items[:self.data.count]
-        return self._getFeed().items[:self.data.count]
+        items = []        
+        if self.data.event_types:
+            items = self._getFeed().query_items(self.data.event_types,
+                self.data.free_events)
+        elif self.data.free_events:
+            items = self._getFeed().query_items(None, self.data.free_events)
+        else:
+            items = self._getFeed().items
+        return items[:self.data.count]
 
     @property
     def enabled(self):
@@ -392,7 +391,7 @@ class AddForm(base.AddForm):
     zope.formlib which fields to display. The create() method actually
     constructs the assignment that is being added.
     """
-    form_fields = form.Fields(IFooPortlet)
+    form_fields = form.Fields(IEventPortlet)
 
     def create(self, data):
         return Assignment(**data)
@@ -409,4 +408,4 @@ class EditForm(base.EditForm):
     This is registered with configure.zcml. The form_fields variable tells
     zope.formlib which fields to display.
     """
-    form_fields = form.Fields(IFooPortlet)
+    form_fields = form.Fields(IEventPortlet)

@@ -1,4 +1,4 @@
-<dl class="portlet portletFooPortlet"
+<dl class="portlet portletEventPortlet"
     i18n:domain="itsatrip.portlet.event">
 
     <dt class="portletHeader">
@@ -11,7 +11,7 @@
         </a>
         <span class="portletTopRight"></span>
     </dt>
-    <tal:rss tal:condition="view/feedAvailable"
+    <tal:feed tal:condition="view/feedAvailable"
                 tal:define="toLocalizedTime nocall:context/@@plone/toLocalizedTime"
                 tal:repeat="item view/items">
         <dd class="portletItem oddrow"
@@ -33,15 +33,18 @@
                 class="summary">
                 Summary
             </div>
-            <div tal:content="structure item/time"
-                class="time">
-                Time
-            </div>
-            <div tal:content="item/venueName"
-                class="venueName">
+            <span tal:condition="item/time"
+                class="time portletItemDetails" >
+                <b class="time">Time:</b>
+                <span tal:replace="item/time">
+                    Time
+                </span>
+            </span>
+            <span tal:content="item/venueName"
+                class="venueName portletItemDetails">
                 VenueName
-            </div>
-            <div class="address">
+            </span>
+            <span class="address portletItemDetails">
                 <span tal:replace="item/address"
                     tal:condition="exists:item/address">
                     Address
@@ -50,16 +53,16 @@
                     tal:condition="exists:item/city">
                     City
                 </span>
-            </div>
+            </span>
             <a href="#"
                 tal:attributes="href string:${item/website}"
-                class="website">
+                class="website portletItemDetails">
                 <span tal:replace="python: path('item/website').replace('http://', '').replace('https://', '')">
                     website
                 </span>
             </a>
         </dd>
-    </tal:rss>
+    </tal:feed>
     <dd class="portletFooter" tal:condition="view/feedAvailable">
         <a href=""
            tal:attributes="href view/siteurl"

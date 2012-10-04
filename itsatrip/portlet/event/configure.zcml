@@ -21,8 +21,8 @@
        -->
 
      <plone:portlet
-         name="itsatrip.portlet.event.FooPortlet"
-         interface=".fooportlet.IFooPortlet"
+         name="itsatrip.portlet.event.EventPortlet"
+         interface=".fooportlet.IEventPortlet"
          assignment=".fooportlet.Assignment"
          view_permission="zope2.View"
          edit_permission="cmf.ManagePortal"

@@ -4,12 +4,12 @@ import time
 import urllib2
 import md5
 import tempfile
+import time
 
 
 def read_data(url=None, force=False):
     data = None
-    if url == None:
-        url = 'http://www.itsatrip.org/api/xmlfeed.ashx'
+    assert url != None, "url not given"
     hash = md5.new(url)
     tmpf = tempfile.gettempdir()
     tmpf = os.path.join(tmpf, 'itsatrip_data')
@@ -21,12 +21,20 @@ def read_data(url=None, force=False):
         data = file.read()
         file.close()
     else:
-        file = urllib2.urlopen(url)
-        data = file.read()
-        sfile = open(tmpf, 'wt')
-        sfile.write(data)
-        sfile.close()
-        file.close()
+        try:
+            file = urllib2.urlopen(url)
+            data = file.read()
+            try:
+                try:
+                    sfile = open(tmpf, 'wt')
+                    sfile.write(data)
+                    sfile.close()            
+                finally:
+                    if sfile: sfile.close()
+            except:
+                pass
+        finally:
+            if file: file.close()
     return data
 
 
@@ -38,3 +46,10 @@ def search(parser, tags):
         if existtag.has_key(tag):
             result += ([i for i in items if i in existtag[tag]])
     return result
+
+
+def free_events(items):
+    """Filter items by free admission"""
+    result = ([i for i in items if i.admission.lower() == 'free'])
+    return result
+

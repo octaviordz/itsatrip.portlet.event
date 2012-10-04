@@ -4,9 +4,9 @@
  <!-- Portlet type registrations -->
 
  <portlet
-   addview="itsatrip.portlet.event.FooPortlet"
+   addview="itsatrip.portlet.event.EventPortlet"
    title="itsatrip event"
-   description="Display itsatrip.com events"
+   description="Display itsatrip.org events"
    />
 
 </portlets>
