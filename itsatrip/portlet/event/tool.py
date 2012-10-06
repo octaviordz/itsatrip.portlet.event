@@ -39,12 +39,12 @@ def read_data(url=None, force=False):
 
 
 def search(parser, tags):
-    existtag = parser.tags
+    tageventdic = parser.tagevent
     items = parser.items
     result = []
     for tag in tags:
-        if existtag.has_key(tag):
-            result += ([i for i in items if i in existtag[tag]])
+        if tageventdic.has_key(tag):
+            result += ([i for i in items if i in tageventdic[tag]])
     return result
 
 

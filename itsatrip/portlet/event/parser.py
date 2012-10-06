@@ -58,11 +58,11 @@ class _StripHTMLParser(HTMLParser.HTMLParser):
         if self._count > self.limit:
             return
         self.starttags.append(tag)
-        self._buffer = u''.join([self._buffer, '<'+tag+'>'])
+        self._buffer = u''.join([self._buffer, u'<'+tag+u'>'])
 
     def handle_endtag(self, tag):
         if len(self.starttags) > 0 and self.starttags[-1:][0] == tag:
-            self._buffer = u''.join([self._buffer, '</'+tag+'>'])
+            self._buffer = u''.join([self._buffer, u'</'+tag+u'>'])
             self.starttags.pop()
         self.endtags.append(tag)
 
@@ -84,8 +84,8 @@ class _StripHTMLParser(HTMLParser.HTMLParser):
     def handle_startendtag(self, tag, attr):
         if self._count > self.limit:
             return
-        attrs = [a[0]+'="'+a[1]+'"' for a in attr]
-        text = '<%s %s/>' %(tag, u' '.join(attrs))
+        attrs = [a[0]+u'="'+a[1]+u'"' for a in attr]
+        text = u'<%s %s/>' %(tag, u' '.join(attrs))
         self._buffer = u''.join([self._buffer, text])
 
 
@@ -103,9 +103,9 @@ class _StripHTMLParser(HTMLParser.HTMLParser):
 ##interestName
 class Parser:
     def __init__(self):
-        self.events = {}
         self.items = []
-        self.tags = {}
+        self.events = {}
+        self.tagevent = {}
         self.current = None
         self.cnode = None
         self.isEventSection = False
@@ -118,6 +118,10 @@ class Parser:
         self.p.EndElementHandler = self.end_element
         self.p.CharacterDataHandler = self.char_data
         
+    @property
+    def tags(self):
+        return self.tagevent.keys()
+    
     def start_element(self, name, attr):
         self.cnode = name
         if name == u'Event':
@@ -135,10 +139,10 @@ class Parser:
             self.isTagSection = False
         elif name == u'interestName':
             tag = self.buffer.strip()            
-            if not self.tags.has_key(tag):
-                self.tags[tag] = [self.current]
+            if not self.tagevent.has_key(tag):
+                self.tagevent[tag] = [self.current]
             else:
-                l = self.tags[tag]
+                l = self.tagevent[tag]
                 l.append(self.current)
         self._end_element_event(name)
         self.buffer = u''

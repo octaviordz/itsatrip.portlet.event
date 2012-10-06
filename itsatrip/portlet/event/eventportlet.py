@@ -5,22 +5,140 @@ from zope.interface import implements, Interface
 
 from plone.portlets.interfaces import IPortletDataProvider
 from plone.app.portlets.portlets import base
-
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from zope.schema.interfaces import IContextSourceBinder
+from zope.schema.vocabulary import SimpleVocabulary
+from Acquisition import aq_base
+from zope.app.form.browser.itemswidgets import OrderedMultiSelectWidget
 
 from DateTime import DateTime
 import parser
 import tool
 import time
 import urllib2
+import threading
+import Queue
 
+from itsatrip.portlet.event import EventPortletMessageFactory as _
 
-# TODO: If you require i18n translation for any of your schema fields below,
-# uncomment the following to import your package MessageFactory
-from itsatrip.portlet.event import FooPortletMessageFactory as _
 
 # store the feeds here (which means in RAM)
 FEED_DATA = {}  # url: is the key
+_FEED_QUEUE = Queue.Queue()
+
+def async_feed_update(itsatripfeed):
+    rfeed = None
+    if not _FEED_QUEUE.empty():
+        rfeed = _FEED_QUEUE.get(False)
+    if rfeed:
+        fd = FEED_DATA.get(rfeed.url, None)
+        if not fd and not FEED_DATA.get(rfeed.url, None):
+            FEED_DATA[rfeed.url] = rfeed
+        if rfeed.url == itsatripfeed.url:
+            print 'itsatripfeed.url %s'%itsatripfeed.url
+            return
+    def _work(feed):
+        if not feed.ok:
+            print 'async_feed_update...'
+            feed.update()
+            print 'async_feed_updated...'
+            _FEED_QUEUE.put(feed, False)
+    t = threading.Thread(target=_work, args=(itsatripfeed,))
+    t.start()
+
+#@zope.interface.implementer(IContextSourceBinder)
+class _EventTypeVocabulary(object):
+    implements(IContextSourceBinder)
+    def __call__(self, context):
+        """Available Event Types vocabulary"""
+        event_types = []
+        terms = []    
+        if hasattr(context, u'url'):
+            feed = FEED_DATA.get(context.url, None)
+            if not feed:
+                afeed = ItsatripFeed(context.url, context.timeout)
+                async_feed_update(afeed)
+            elif feed and feed.ok:
+                print 'using event_types(tags) from feed'
+                event_types = sorted(feed.tags)
+        if not event_types:
+            print 'using default event_types(tags)'
+            event_types = (u'Art, History & Museums',
+                    u'Cultural & Heritage',
+                    u'Expositions & Conventions',
+                    u'Family & Kids',
+                    u'Festivals, Fairs & Parades',
+                    u'Food & Wine',
+                    u'Holiday & Seasonal',
+                    u'Home & Garden',
+                    u'Music & Concerts',
+                    u'Nature & Outdoors',
+                    u'Other',
+                    u'Theater, Dance, Film & Performing Arts',
+                    u'Tours, Lectures & Presentations',
+                    )
+            event_types = sorted(event_types)
+        #return SimpleVocabulary.fromValues(event_types)
+        for et in event_types:
+            svoc = SimpleVocabulary.createTerm(et, str(et), et)
+            terms.append(svoc)
+        return _FixSimpleVocabulary(terms)
+
+EventTypeVocabulary = _EventTypeVocabulary()
+
+class _FixSimpleVocabulary(SimpleVocabulary):
+    def getTerm(self, value):
+        result = None
+        try:
+            #SimpleVocabulary.getTerm(self, value)
+            result = super(_FixSimpleVocabulary, self).getTerm(value)
+        except Exception, ex:
+            name = value+u'[x]'
+            result = SimpleVocabulary.createTerm(name, str(name), name)
+        return result
+            
+##https://mail.zope.org/pipermail/zope3-users/2009-April/008513.html
+##http://pypi.python.org/pypi/collective.orderedmultiselectwidget
+class _SecureOrderedMultiSelectWidget(OrderedMultiSelectWidget):
+    """ This class fixes an acquisition bug in
+        zope.app.form.browser.itemswidgets.py line 556.
+
+        itemswidgets.py has since been moved to zope.formlib, which is zope.ap, 
+        zope2 and Acquisition agnostic, so I don't see how this fix (which uses
+        'aq_base') can be contributed there since Acquisition (and aq_base)
+        isn't a dependency of zope.formlib.
+
+        Description of the bug:
+        -----------------------
+        The 'get' method on the 'speakers' List fields is called, which tries
+        to see if there is a 'speakers' attribute on the add or edit view.
+        In the case of (for example) slc.seminarportal, we have a folder named 
+        'speakers' which is then sometimes erroneously returned 
+        (because of Acquisition) which then causes chaos.
+    """
+
+    def selected(self):        
+        """Return a list of tuples (text, value) that are selected."""
+        #rint '_SecureOrderedMultiSelectWidget.selected'
+        # Get form values
+        values = self._getFormValue()
+        #rint 'values:%s'% repr(values)
+        # Not all content objects must necessarily support the attributes
+        # XXX: Line below contains the bugfix. (aq_base)
+        if hasattr(aq_base(self.context.context), self.context.__name__):
+            # merge in values from content 
+            for value in self.context.get(self.context.context):
+                if value not in values:
+                    values.append(value)
+        terms = [self.vocabulary.getTerm(value)
+                 for value in values]
+        return [{'text': self.textForValue(term), 'value': term.token}
+                for term in terms]
+
+def MultiSelectWidget(field, request):
+    vocabulary = field.value_type.vocabulary
+    widget = _SecureOrderedMultiSelectWidget(field, vocabulary, request)
+    return widget
 
 class IFeed(Interface):
 
@@ -86,6 +204,10 @@ class ItsatripFeed(object):
         self._last_update_time = None            # time as DateTime or Nonw
 
     @property
+    def tags(self):
+        return self._parser.tags
+    
+    @property
     def last_update_time_in_minutes(self):
         """return the time the last update was done in minutes"""
         return self._last_update_time_in_minutes
@@ -139,7 +261,7 @@ class ItsatripFeed(object):
             self._last_update_time = DateTime()
             try:
                 data = tool.read_data(url, force=True)
-            except urllib2.URLError, e:
+            except urllib2.URLError, ex:
                 try:
                     data = tool.read_data(url)
                 except:
@@ -164,13 +286,12 @@ class ItsatripFeed(object):
             return self._items
         elif free_events and not event_types:
             return self._model2view(tool.free_events(self._parser.items))
-        vkey = u' '.join([event_types, str(free_events)])
-        #rint 'vkey %s' % vkey.encode('ascii', 'replace')
+        stypes = u';'.join([et for et in event_types])
+        vkey = u' '.join([stypes, str(free_events)])        
+        print 'vkey %s' % vkey.encode('ascii', 'replace')
         result = self._items_view.get(vkey, None)
         if not result:
-            tags = event_types.split(';')
-            tags = [t.strip() for t in tags if len(t.strip())>0]
-            items = tool.search(self._parser, tags)
+            items = tool.search(self._parser, event_types)
             if free_events:
                 items = tool.free_events(items)
             result = self._model2view(items)
@@ -226,7 +347,7 @@ class ItsatripFeed(object):
     def siteurl(self):
         """return the link to the site the RSS feed points to"""
         return self._siteurl
-
+    
 
 class IEventPortlet(IPortletDataProvider):
     """A portlet
@@ -235,39 +356,32 @@ class IEventPortlet(IPortletDataProvider):
     data that is being rendered and the portlet assignment itself are the
     same.
     """
-
-    # TODO: Add any zope.schema fields here to capture portlet configuration
-    # information. Alternatively, if there are no settings, leave this as an
-    # empty interface - see also notes around the add form and edit form
-    # below.
-
     portlet_title = schema.TextLine(
-        title=_(u'Title'),
-        description=_(u'Title of the portlet.'),
-        required=False,
-        default=u''
-        )
-
+            title=_(u'Title'),
+            description=_(u'Title of the portlet.'),
+            required=False,
+            default=u'')
     count = schema.Int(title=_(u'Number of items to display'),
-                       description=_(u'How many items to list.'),
-                       required=True,
-                       default=5)
+           description=_(u'How many items to list.'),
+           required=True,
+           default=5)
     url = schema.TextLine(title=_(u'Dataset url'),
-                        description=_(u'Link of the Dataset to display.'),
-                        required=True,
-                        default=u'http://www.itsatrip.org/api/xmlfeed.ashx')
+            description=_(u'Link of the Dataset to display.'),
+            required=True,
+            default=u'http://www.itsatrip.org/api/xmlfeed.ashx')
     timeout = schema.Int(title=_(u'Feed reload timeout'),
-                        description=_(u'Time in minutes after which the feed should be reloaded.'),
-                        required=True,
-                        default=100)
-    event_types = schema.TextLine(title=_(u'Event Types'),
-                        description=_(u'Event types to display.'),
-                        required=False,
-                        default=u'')
+            description=_(u'Time in minutes after which the feed should be reloaded.'),
+            required=True,
+            default=100)
+    event_types_filter = schema.Set(title=u'Event Types',
+            description=_(u'Only display the events of the selected types.'),
+            value_type=schema.Choice(vocabulary=
+                    'itsatrip.portlet.event.EventTypeVocabulary'),
+            required=False,)
     free_events = schema.Bool(title=_(u'Free events'),
-                        description=_(u'Display only free events.'),
-                        required=False,
-                        default=False)
+            description=_(u'Display only free events.'),
+            required=False,
+            default=False)
 
 class Assignment(base.Assignment):
     """Portlet assignment.
@@ -275,31 +389,26 @@ class Assignment(base.Assignment):
     This is what is actually managed through the portlets UI and associated
     with columns.
     """
-
     implements(IEventPortlet)
-
-    portlet_title = u''
-    url = u"http://www.itsatrip.org/api/xmlfeed.ashx"
-    event_types = u''
-    free_events = False
+    portlet_title = u''    
 
     def __init__(self, portlet_title=u'', count=5,
             url=u'http://www.itsatrip.org/api/xmlfeed.ashx',
-            timeout=100, event_types=u'', free_events=False):
+            timeout=100, free_events=False,
+            event_types_filter=None):
         self.portlet_title = portlet_title
         self.count = count
         self.url = url
         self.timeout = timeout
-        self.event_types = event_types
         self.free_events = free_events
-        
+        self.event_types_filter = event_types_filter
         
     @property
     def title(self):
         """This property is used to give the title of the portlet in the
         "manage portlets" screen.
         """
-        return "Events from itsatrip"
+        return "Events from itsatrip.org"
 
 
 class Renderer(base.DeferredRenderer):
@@ -309,7 +418,6 @@ class Renderer(base.DeferredRenderer):
     rendered, and the implicit variable 'view' will refer to an instance
     of this class. Other methods can be added and referenced in the template.
     """
-    
     render_full = ViewPageTemplateFile('eventportlet.pt')
     
     @property
@@ -317,8 +425,10 @@ class Renderer(base.DeferredRenderer):
         """should return True if deferred template should be displayed"""
         feed=self._getFeed()
         if not feed.loaded:
+            print 'feed.loaded: %s'%feed.loaded
             return True
         if feed.needs_update:
+            print 'feed.needs_update: %s'%feed.needs_update
             return True
         return False
 
@@ -337,6 +447,7 @@ class Renderer(base.DeferredRenderer):
         feed = FEED_DATA.get(self.data.url,None)
         if feed is None:
             # create it
+            print '_getFeed creating FEED_DATA'
             feed = FEED_DATA[self.data.url] = ItsatripFeed(self.data.url,
                     self.data.timeout)
         return feed
@@ -369,9 +480,11 @@ class Renderer(base.DeferredRenderer):
 
     @property    
     def items(self):
-        items = []        
-        if self.data.event_types:
-            items = self._getFeed().query_items(self.data.event_types,
+        items = []
+        print 'data.free_events:%s' %repr(self.data.free_events)
+        print 'data.event_types_filter:%s' %repr(self.data.event_types_filter)
+        if self.data.event_types_filter:
+            items = self._getFeed().query_items(self.data.event_types_filter,
                 self.data.free_events)
         elif self.data.free_events:
             items = self._getFeed().query_items(None, self.data.free_events)
@@ -392,14 +505,9 @@ class AddForm(base.AddForm):
     constructs the assignment that is being added.
     """
     form_fields = form.Fields(IEventPortlet)
-
+    #form_fields['event_types_filter'].custom_widget = MultiSelectWidget
     def create(self, data):
         return Assignment(**data)
-
-
-# NOTE: If this portlet does not have any configurable parameters, you
-# can remove the EditForm class definition and delete the editview
-# attribute from the <plone:portlet /> registration in configure.zcml
 
 
 class EditForm(base.EditForm):
@@ -409,3 +517,4 @@ class EditForm(base.EditForm):
     zope.formlib which fields to display.
     """
     form_fields = form.Fields(IEventPortlet)
+    #form_fields['event_types_filter'].custom_widget = MultiSelectWidget
