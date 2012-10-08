@@ -50,8 +50,6 @@ class _StripHTMLParser(HTMLParser.HTMLParser):
         self.clear()
         self.limit = limit
         self.feed(html)
-        #diff = self.limit - self._count
-        #text = self._buffer[:diff] + (self._buffer[diff:] and u'...')
         return self._buffer
 
     def handle_starttag(self, tag, attrs):

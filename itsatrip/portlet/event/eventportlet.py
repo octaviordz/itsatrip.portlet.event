@@ -35,7 +35,7 @@ def async_feed_update(itsatripfeed):
         if not fd and not FEED_DATA.get(rfeed.url, None):
             FEED_DATA[rfeed.url] = rfeed
         if rfeed.url == itsatripfeed.url:
-            print 'itsatripfeed.url %s'%itsatripfeed.url
+            print 'Work for url previously done.%s'%itsatripfeed.url
             return
     def _work(feed):
         if not feed.ok:
@@ -90,55 +90,12 @@ class _FixSimpleVocabulary(SimpleVocabulary):
     def getTerm(self, value):
         result = None
         try:
-            #SimpleVocabulary.getTerm(self, value)
             result = super(_FixSimpleVocabulary, self).getTerm(value)
         except Exception, ex:
             name = value+u'[x]'
             result = SimpleVocabulary.createTerm(name, str(name), name)
         return result
             
-##https://mail.zope.org/pipermail/zope3-users/2009-April/008513.html
-##http://pypi.python.org/pypi/collective.orderedmultiselectwidget
-class _SecureOrderedMultiSelectWidget(OrderedMultiSelectWidget):
-    """ This class fixes an acquisition bug in
-        zope.app.form.browser.itemswidgets.py line 556.
-
-        itemswidgets.py has since been moved to zope.formlib, which is zope.ap, 
-        zope2 and Acquisition agnostic, so I don't see how this fix (which uses
-        'aq_base') can be contributed there since Acquisition (and aq_base)
-        isn't a dependency of zope.formlib.
-
-        Description of the bug:
-        -----------------------
-        The 'get' method on the 'speakers' List fields is called, which tries
-        to see if there is a 'speakers' attribute on the add or edit view.
-        In the case of (for example) slc.seminarportal, we have a folder named 
-        'speakers' which is then sometimes erroneously returned 
-        (because of Acquisition) which then causes chaos.
-    """
-
-    def selected(self):        
-        """Return a list of tuples (text, value) that are selected."""
-        #rint '_SecureOrderedMultiSelectWidget.selected'
-        # Get form values
-        values = self._getFormValue()
-        #rint 'values:%s'% repr(values)
-        # Not all content objects must necessarily support the attributes
-        # XXX: Line below contains the bugfix. (aq_base)
-        if hasattr(aq_base(self.context.context), self.context.__name__):
-            # merge in values from content 
-            for value in self.context.get(self.context.context):
-                if value not in values:
-                    values.append(value)
-        terms = [self.vocabulary.getTerm(value)
-                 for value in values]
-        return [{'text': self.textForValue(term), 'value': term.token}
-                for term in terms]
-
-def MultiSelectWidget(field, request):
-    vocabulary = field.value_type.vocabulary
-    widget = _SecureOrderedMultiSelectWidget(field, vocabulary, request)
-    return widget
 
 class IFeed(Interface):
 
@@ -374,7 +331,7 @@ class IEventPortlet(IPortletDataProvider):
             required=True,
             default=100)
     event_types_filter = schema.Set(title=u'Event Types',
-            description=_(u'Only display the events of the selected types.'),
+            description=_(u'Only display the events of selected types.'),
             value_type=schema.Choice(vocabulary=
                     'itsatrip.portlet.event.EventTypeVocabulary'),
             required=False,)
@@ -425,10 +382,8 @@ class Renderer(base.DeferredRenderer):
         """should return True if deferred template should be displayed"""
         feed=self._getFeed()
         if not feed.loaded:
-            print 'feed.loaded: %s'%feed.loaded
             return True
         if feed.needs_update:
-            print 'feed.needs_update: %s'%feed.needs_update
             return True
         return False
 
@@ -447,7 +402,7 @@ class Renderer(base.DeferredRenderer):
         feed = FEED_DATA.get(self.data.url,None)
         if feed is None:
             # create it
-            print '_getFeed creating FEED_DATA'
+            print 'Creating FEED_DATA[%s]'%self.data.url
             feed = FEED_DATA[self.data.url] = ItsatripFeed(self.data.url,
                     self.data.timeout)
         return feed
@@ -456,7 +411,6 @@ class Renderer(base.DeferredRenderer):
     def url(self):
         """return url of feed for portlet"""
         return self._getFeed().url
-
 
     @property
     def siteurl(self):
@@ -481,8 +435,6 @@ class Renderer(base.DeferredRenderer):
     @property    
     def items(self):
         items = []
-        print 'data.free_events:%s' %repr(self.data.free_events)
-        print 'data.event_types_filter:%s' %repr(self.data.event_types_filter)
         if self.data.event_types_filter:
             items = self._getFeed().query_items(self.data.event_types_filter,
                 self.data.free_events)
@@ -518,3 +470,44 @@ class EditForm(base.EditForm):
     """
     form_fields = form.Fields(IEventPortlet)
     #form_fields['event_types_filter'].custom_widget = MultiSelectWidget
+
+##https://mail.zope.org/pipermail/zope3-users/2009-April/008513.html
+##http://pypi.python.org/pypi/collective.orderedmultiselectwidget
+class _SecureOrderedMultiSelectWidget(OrderedMultiSelectWidget):
+    """ This class fixes an acquisition bug in
+        zope.app.form.browser.itemswidgets.py line 556.
+
+        itemswidgets.py has since been moved to zope.formlib, which is zope.ap, 
+        zope2 and Acquisition agnostic, so I don't see how this fix (which uses
+        'aq_base') can be contributed there since Acquisition (and aq_base)
+        isn't a dependency of zope.formlib.
+
+        Description of the bug:
+        -----------------------
+        The 'get' method on the 'speakers' List fields is called, which tries
+        to see if there is a 'speakers' attribute on the add or edit view.
+        In the case of (for example) slc.seminarportal, we have a folder named 
+        'speakers' which is then sometimes erroneously returned 
+        (because of Acquisition) which then causes chaos.
+    """
+
+    def selected(self):        
+        """Return a list of tuples (text, value) that are selected."""
+        # Get form values
+        values = self._getFormValue()        
+        # Not all content objects must necessarily support the attributes
+        # XXX: Line below contains the bugfix. (aq_base)
+        if hasattr(aq_base(self.context.context), self.context.__name__):
+            # merge in values from content 
+            for value in self.context.get(self.context.context):
+                if value not in values:
+                    values.append(value)
+        terms = [self.vocabulary.getTerm(value)
+                 for value in values]
+        return [{'text': self.textForValue(term), 'value': term.token}
+                for term in terms]
+
+def MultiSelectWidget(field, request):
+    vocabulary = field.value_type.vocabulary
+    widget = _SecureOrderedMultiSelectWidget(field, vocabulary, request)
+    return widget
