@@ -74,6 +74,7 @@ class _EventTypeVocabulary(object):
                     u'Music & Concerts',
                     u'Nature & Outdoors',
                     u'Other',
+                    u'Sports',
                     u'Theater, Dance, Film & Performing Arts',
                     u'Tours, Lectures & Presentations',
                     )

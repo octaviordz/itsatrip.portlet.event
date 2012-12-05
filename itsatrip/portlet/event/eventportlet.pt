@@ -50,6 +50,7 @@
                     Address
                 </span>
                 <span class="city"
+                    tal:replace="item/city"
                     tal:condition="exists:item/city">
                     City
                 </span>
